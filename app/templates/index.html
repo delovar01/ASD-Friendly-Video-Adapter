@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ASD-Friendly Video Adapter</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #F8F4EC; color: #2C3E50; font-family: ui-sans-serif, system-ui, "PT Sans", sans-serif; }
+    .accent { background: #7FB069; }
+    .accent-text { color: #7FB069; }
+    .dz { border: 2px dashed #c7b89a; transition: all .2s ease; }
+    .dz.drag { border-color: #7FB069; background: #eef5e6; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <main class="max-w-2xl mx-auto px-6 py-12">
+    <h1 class="text-3xl sm:text-4xl font-semibold text-center leading-tight">
+      Делаем видео понятнее<br />для особенных детей
+    </h1>
+    <p class="text-center mt-3 text-[#5B6B7B]">
+      Загрузите обучающий ролик — заменим лица на животных, уберём шум и резкие склейки, добавим субтитры.
+    </p>
+
+    <form id="upload-form" class="mt-10" enctype="multipart/form-data">
+      <label id="dropzone" for="file"
+             class="dz rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer bg-white/60">
+        <svg class="w-12 h-12 mb-3 accent-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M12 16V4m0 0l-4 4m4-4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span id="dz-label" class="font-medium">Перетащите MP4 сюда или нажмите, чтобы выбрать</span>
+        <span class="text-sm text-[#8A9AA7] mt-1">до 200 МБ, до 10 минут</span>
+        <input id="file" name="file" type="file" accept="video/mp4,video/quicktime" class="hidden" />
+      </label>
+
+      <button id="submit-btn" type="submit"
+              class="accent mt-6 w-full py-3 rounded-xl text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+        Адаптировать
+      </button>
+      <p id="err" class="text-red-600 text-sm mt-3 hidden"></p>
+    </form>
+
+    <footer class="text-center text-xs text-[#8A9AA7] mt-16">
+      MVP · локальная обработка · без GPU
+    </footer>
+  </main>
+
+  <script>
+    const form = document.getElementById('upload-form');
+    const fileInput = document.getElementById('file');
+    const dz = document.getElementById('dropzone');
+    const dzLabel = document.getElementById('dz-label');
+    const btn = document.getElementById('submit-btn');
+    const err = document.getElementById('err');
+
+    function showErr(msg) { err.textContent = msg; err.classList.remove('hidden'); }
+    function clearErr() { err.textContent = ''; err.classList.add('hidden'); }
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length) dzLabel.textContent = fileInput.files[0].name;
+    });
+    ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => {
+      e.preventDefault(); dz.classList.add('drag');
+    }));
+    ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => {
+      e.preventDefault(); dz.classList.remove('drag');
+    }));
+    dz.addEventListener('drop', e => {
+      if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        dzLabel.textContent = fileInput.files[0].name;
+      }
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearErr();
+      if (!fileInput.files.length) { showErr('Выберите файл'); return; }
+      btn.disabled = true;
+      btn.textContent = 'Загружаем…';
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      try {
+        const r = await fetch('/jobs', { method: 'POST', body: fd });
+        if (!r.ok) {
+          const txt = await r.text();
+          throw new Error(txt || ('HTTP ' + r.status));
+        }
+        const j = await r.json();
+        window.location.href = j.redirect;
+      } catch (ex) {
+        showErr('Ошибка: ' + ex.message);
+        btn.disabled = false;
+        btn.textContent = 'Адаптировать';
+      }
+    });
+  </script>
+</body>
+</html>

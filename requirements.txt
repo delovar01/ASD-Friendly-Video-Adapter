@@ -1,0 +1,25 @@
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
+jinja2==3.1.4
+sqlmodel==0.0.22
+
+# Video / image
+opencv-python==4.10.0.84
+moviepy==1.0.3
+Pillow==10.4.0
+mediapipe==0.10.14
+scenedetect[opencv]==0.6.4
+numpy==1.26.4
+
+# Audio
+noisereduce==3.0.3
+librosa==0.10.2
+pyloudnorm==0.1.1
+soundfile==0.12.1
+
+# Subtitles
+faster-whisper==1.0.3
+
+# Tests
+pytest==8.3.3

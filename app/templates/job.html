@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Обработка · ASD-Friendly Video Adapter</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    body { background: #F8F4EC; color: #2C3E50; font-family: ui-sans-serif, system-ui, "PT Sans", sans-serif; }
+    .accent-bg { background: #7FB069; }
+    .accent-text { color: #7FB069; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <main class="max-w-4xl mx-auto px-6 py-10">
+    <a href="/" class="text-sm accent-text hover:underline">← На главную</a>
+    <h1 class="text-2xl sm:text-3xl font-semibold mt-3">Адаптация видео</h1>
+    <p class="text-[#5B6B7B] mt-1">Файл: <span class="font-medium">{{ job.original_name }}</span></p>
+
+    <div id="status"
+         hx-get="/jobs/{{ job.id }}/status"
+         hx-trigger="load, every 2s"
+         hx-swap="innerHTML"
+         class="mt-8">
+      <div class="animate-pulse text-[#8A9AA7]">Загружаем статус…</div>
+    </div>
+  </main>
+</body>
+</html>

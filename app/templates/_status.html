@@ -1,0 +1,61 @@
+{% if job.status.value == "done" %}
+  <div class="bg-white rounded-2xl p-6 shadow-sm">
+    <div class="flex items-center gap-2 text-[#7FB069] font-medium">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Готово
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+      <div>
+        <h3 class="font-medium mb-2 text-[#5B6B7B]">До</h3>
+        <video class="w-full rounded-lg bg-black" controls
+               src="/jobs/{{ job.id }}/video/source"></video>
+      </div>
+      <div>
+        <h3 class="font-medium mb-2 text-[#5B6B7B]">После</h3>
+        <video class="w-full rounded-lg bg-black" controls
+               src="/jobs/{{ job.id }}/video/adapted"></video>
+      </div>
+    </div>
+
+    {% if job.preview_before and job.preview_after %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+      <img class="w-full rounded-lg" src="/jobs/{{ job.id }}/preview/before" alt="before" />
+      <img class="w-full rounded-lg" src="/jobs/{{ job.id }}/preview/after" alt="after" />
+    </div>
+    {% endif %}
+
+    <div class="flex flex-col sm:flex-row gap-3 mt-6">
+      <a href="/jobs/{{ job.id }}/download"
+         class="accent-bg text-white text-center py-3 px-6 rounded-xl font-medium flex-1">
+        Скачать адаптированное видео
+      </a>
+      <a href="/"
+         class="border border-[#7FB069] accent-text text-center py-3 px-6 rounded-xl font-medium flex-1">
+        Сделать ещё
+      </a>
+    </div>
+  </div>
+{% elif job.status.value == "failed" %}
+  <div class="bg-white rounded-2xl p-6 shadow-sm border border-red-200">
+    <div class="font-medium text-red-600">Не получилось обработать ролик</div>
+    {% if job.error %}<pre class="text-sm text-[#5B6B7B] mt-2 whitespace-pre-wrap">{{ job.error }}</pre>{% endif %}
+    <a href="/" class="inline-block mt-4 accent-text hover:underline">Попробовать ещё раз</a>
+  </div>
+
+{% else %}
+  <div class="bg-white rounded-2xl p-6 shadow-sm">
+    <div class="flex items-center justify-between">
+      <span class="font-medium">{{ label }}</span>
+      <span class="text-sm text-[#8A9AA7]">{{ progress }}%</span>
+    </div>
+    <div class="mt-3 h-3 bg-[#EEE7DA] rounded-full overflow-hidden">
+      <div class="accent-bg h-full transition-all duration-500" style="width: {{ progress }}%"></div>
+    </div>
+    <p class="text-sm text-[#8A9AA7] mt-4">
+      Подождите, это может занять пару минут. Страницу можно оставить открытой.
+    </p>
+  </div>
+{% endif %}
