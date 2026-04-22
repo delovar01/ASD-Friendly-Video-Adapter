@@ -1,18 +1,39 @@
 """Generate placeholder cartoon animal masks (512x512 RGBA).
 
+The masks are drawn around fixed anchor points so that `app/pipeline/faces.py`
+can warp them onto detected faces by eye position:
+
+    eye_left  = (0.35 * SIZE, 0.48 * SIZE)
+    eye_right = (0.65 * SIZE, 0.48 * SIZE)
+
+The mask extends well beyond the detected eye region (forehead to below chin,
+including ears) so the warp fully covers the underlying human face. The outer
+alpha is Gaussian-feathered so there is no hard rectangular edge when blending.
+
 Run: python scripts/generate_masks.py
-Writes PNGs to app/static/masks/.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 OUT = Path(__file__).resolve().parent.parent / "app" / "static" / "masks"
 OUT.mkdir(parents=True, exist_ok=True)
 
 SIZE = 512
+
+# Anchor points — MUST match MASK_EYE_L / MASK_EYE_R in app/pipeline/faces.py.
+EYE_L = (int(SIZE * 0.35), int(SIZE * 0.48))
+EYE_R = (int(SIZE * 0.65), int(SIZE * 0.48))
+NOSE = (int(SIZE * 0.50), int(SIZE * 0.62))
+MOUTH = (int(SIZE * 0.50), int(SIZE * 0.74))
+
+# Head shape (ellipse bounding box) — full coverage from above forehead to below chin.
+HEAD_BOX = (int(SIZE * 0.10), int(SIZE * 0.14),
+            int(SIZE * 0.90), int(SIZE * 0.94))
+
+FEATHER_RADIUS = 14  # px of outer-alpha Gaussian blur for a soft, non-sticker edge.
 
 
 def _new() -> tuple[Image.Image, ImageDraw.ImageDraw]:
@@ -20,117 +41,144 @@ def _new() -> tuple[Image.Image, ImageDraw.ImageDraw]:
     return img, ImageDraw.Draw(img)
 
 
-def _face(draw: ImageDraw.ImageDraw, face_color: tuple[int, int, int],
-          ear_color: tuple[int, int, int] | None = None) -> None:
-    if ear_color is None:
-        ear_color = face_color
-    # Face
-    draw.ellipse((56, 96, 456, 496), fill=face_color + (255,))
-    # Inner face (snout area, slightly lighter)
-    lighter = tuple(min(255, c + 28) for c in face_color)
-    draw.ellipse((156, 280, 356, 456), fill=lighter + (255,))
+def _head(draw: ImageDraw.ImageDraw, face_color: tuple[int, int, int]) -> None:
+    draw.ellipse(HEAD_BOX, fill=face_color + (255,))
+    # Slightly lighter muzzle area around nose/mouth.
+    lighter = tuple(min(255, c + 30) for c in face_color)
+    mz = (int(SIZE * 0.30), int(SIZE * 0.56),
+          int(SIZE * 0.70), int(SIZE * 0.90))
+    draw.ellipse(mz, fill=lighter + (255,))
 
 
 def _eyes(draw: ImageDraw.ImageDraw) -> None:
-    # Whites
-    draw.ellipse((150, 220, 230, 300), fill=(255, 255, 255, 255))
-    draw.ellipse((282, 220, 362, 300), fill=(255, 255, 255, 255))
-    # Pupils
-    draw.ellipse((176, 246, 212, 282), fill=(30, 30, 30, 255))
-    draw.ellipse((308, 246, 344, 282), fill=(30, 30, 30, 255))
-    # Highlights
-    draw.ellipse((198, 252, 208, 262), fill=(255, 255, 255, 255))
-    draw.ellipse((330, 252, 340, 262), fill=(255, 255, 255, 255))
+    eye_r = int(SIZE * 0.065)
+    pupil_r = int(SIZE * 0.030)
+    hl_r = int(SIZE * 0.010)
+    for cx, cy in (EYE_L, EYE_R):
+        # White of eye.
+        draw.ellipse((cx - eye_r, cy - eye_r, cx + eye_r, cy + eye_r),
+                     fill=(255, 255, 255, 255))
+        # Pupil (slightly down-right to give it some charm).
+        px, py = cx + 3, cy + 3
+        draw.ellipse((px - pupil_r, py - pupil_r, px + pupil_r, py + pupil_r),
+                     fill=(30, 30, 30, 255))
+        # Highlight.
+        hx, hy = cx + 6, cy - 3
+        draw.ellipse((hx - hl_r, hy - hl_r, hx + hl_r, hy + hl_r),
+                     fill=(255, 255, 255, 255))
 
 
-def _nose_mouth(draw: ImageDraw.ImageDraw, nose_color=(30, 30, 30)) -> None:
-    draw.ellipse((232, 340, 280, 380), fill=nose_color + (255,))
-    draw.arc((200, 370, 312, 440), start=20, end=160, fill=(30, 30, 30, 255), width=6)
+def _nose(draw: ImageDraw.ImageDraw,
+          color: tuple[int, int, int] = (30, 30, 30)) -> None:
+    nx, ny = NOSE
+    rx, ry = int(SIZE * 0.045), int(SIZE * 0.038)
+    draw.ellipse((nx - rx, ny - ry, nx + rx, ny + ry), fill=color + (255,))
+
+
+def _mouth(draw: ImageDraw.ImageDraw) -> None:
+    mx, my = MOUTH
+    draw.arc((mx - 55, my - 20, mx + 55, my + 30),
+             start=20, end=160, fill=(30, 30, 30, 255), width=6)
 
 
 def fox() -> Image.Image:
     img, d = _new()
-    # Triangular ears
     orange = (230, 126, 48)
-    d.polygon([(90, 160), (60, 40), (200, 150)], fill=orange + (255,))
-    d.polygon([(312, 150), (452, 40), (422, 160)], fill=orange + (255,))
-    d.polygon([(110, 150), (95, 80), (175, 145)], fill=(255, 240, 230, 255))
-    d.polygon([(337, 145), (417, 80), (402, 150)], fill=(255, 240, 230, 255))
-    _face(d, orange)
-    # White cheek
-    d.ellipse((130, 310, 382, 470), fill=(255, 245, 230, 255))
+    # Triangular ears at the top of the head (outer + inner).
+    d.polygon([(95, 160), (55, 30), (210, 150)], fill=orange + (255,))
+    d.polygon([(302, 150), (457, 30), (417, 160)], fill=orange + (255,))
+    d.polygon([(115, 150), (95, 70), (180, 140)], fill=(255, 240, 230, 255))
+    d.polygon([(332, 140), (417, 70), (397, 150)], fill=(255, 240, 230, 255))
+    _head(d, orange)
+    # Off-white cheek patch.
+    d.ellipse((140, 310, 372, 470), fill=(255, 245, 230, 255))
     _eyes(d)
-    _nose_mouth(d)
+    _nose(d)
+    _mouth(d)
     return img
 
 
 def bear() -> Image.Image:
     img, d = _new()
     brown = (139, 94, 60)
-    d.ellipse((60, 90, 180, 210), fill=brown + (255,))
-    d.ellipse((332, 90, 452, 210), fill=brown + (255,))
-    d.ellipse((85, 115, 155, 185), fill=(210, 170, 130, 255))
-    d.ellipse((357, 115, 427, 185), fill=(210, 170, 130, 255))
-    _face(d, brown)
-    d.ellipse((160, 310, 352, 460), fill=(222, 190, 150, 255))
+    # Round ears.
+    d.ellipse((55, 80, 175, 200), fill=brown + (255,))
+    d.ellipse((337, 80, 457, 200), fill=brown + (255,))
+    d.ellipse((80, 105, 150, 175), fill=(210, 170, 130, 255))
+    d.ellipse((362, 105, 432, 175), fill=(210, 170, 130, 255))
+    _head(d, brown)
     _eyes(d)
-    _nose_mouth(d)
+    _nose(d)
+    _mouth(d)
     return img
 
 
 def rabbit() -> Image.Image:
     img, d = _new()
     gray = (230, 225, 220)
-    # Long ears
-    d.ellipse((140, 0, 210, 220), fill=gray + (255,))
-    d.ellipse((302, 0, 372, 220), fill=gray + (255,))
-    d.ellipse((155, 20, 195, 200), fill=(255, 190, 195, 255))
-    d.ellipse((317, 20, 357, 200), fill=(255, 190, 195, 255))
-    _face(d, gray)
+    # Long ears above head.
+    d.ellipse((150, 0, 210, 210), fill=gray + (255,))
+    d.ellipse((302, 0, 362, 210), fill=gray + (255,))
+    d.ellipse((163, 18, 197, 195), fill=(255, 190, 195, 255))
+    d.ellipse((315, 18, 349, 195), fill=(255, 190, 195, 255))
+    _head(d, gray)
     _eyes(d)
-    _nose_mouth(d, nose_color=(230, 120, 140))
-    # Buck teeth
-    d.rectangle((242, 400, 258, 440), fill=(255, 255, 255, 255))
-    d.rectangle((258, 400, 274, 440), fill=(255, 255, 255, 255))
+    _nose(d, color=(230, 120, 140))
+    _mouth(d)
+    # Buck teeth under mouth.
+    d.rectangle((244, 395, 258, 435), fill=(255, 255, 255, 255))
+    d.rectangle((258, 395, 272, 435), fill=(255, 255, 255, 255))
     return img
 
 
 def panda() -> Image.Image:
     img, d = _new()
-    # Black ears
-    d.ellipse((60, 70, 180, 190), fill=(30, 30, 30, 255))
-    d.ellipse((332, 70, 452, 190), fill=(30, 30, 30, 255))
-    _face(d, (250, 250, 250))
-    # Black eye patches
-    d.ellipse((130, 200, 240, 320), fill=(30, 30, 30, 255))
-    d.ellipse((272, 200, 382, 320), fill=(30, 30, 30, 255))
-    # Eyes (small, on patches)
-    d.ellipse((170, 240, 208, 278), fill=(255, 255, 255, 255))
-    d.ellipse((304, 240, 342, 278), fill=(255, 255, 255, 255))
-    d.ellipse((182, 252, 200, 270), fill=(30, 30, 30, 255))
-    d.ellipse((316, 252, 334, 270), fill=(30, 30, 30, 255))
-    _nose_mouth(d)
+    # Black ears.
+    d.ellipse((55, 60, 175, 180), fill=(30, 30, 30, 255))
+    d.ellipse((337, 60, 457, 180), fill=(30, 30, 30, 255))
+    _head(d, (250, 250, 250))
+    # Black eye patches — drawn around the eye anchors so the eyes sit on them.
+    ex, ey = EYE_L
+    d.ellipse((ex - 55, ey - 60, ex + 55, ey + 60), fill=(30, 30, 30, 255))
+    ex, ey = EYE_R
+    d.ellipse((ex - 55, ey - 60, ex + 55, ey + 60), fill=(30, 30, 30, 255))
+    _eyes(d)
+    _nose(d)
+    _mouth(d)
     return img
 
 
 def cat() -> Image.Image:
     img, d = _new()
     gray = (180, 180, 190)
-    # Triangle ears
-    d.polygon([(100, 180), (80, 40), (210, 160)], fill=gray + (255,))
-    d.polygon([(302, 160), (432, 40), (412, 180)], fill=gray + (255,))
-    d.polygon([(120, 170), (110, 75), (185, 155)], fill=(255, 200, 210, 255))
-    d.polygon([(327, 155), (402, 75), (392, 170)], fill=(255, 200, 210, 255))
-    _face(d, gray)
+    # Triangular ears.
+    d.polygon([(105, 175), (75, 30), (215, 155)], fill=gray + (255,))
+    d.polygon([(297, 155), (437, 30), (407, 175)], fill=gray + (255,))
+    d.polygon([(125, 165), (115, 70), (190, 150)], fill=(255, 200, 210, 255))
+    d.polygon([(322, 150), (397, 70), (387, 165)], fill=(255, 200, 210, 255))
+    _head(d, gray)
     _eyes(d)
-    # Pink nose
-    d.polygon([(232, 345), (280, 345), (256, 380)], fill=(230, 120, 140, 255))
-    d.arc((200, 370, 312, 440), start=20, end=160, fill=(30, 30, 30, 255), width=6)
-    # Whiskers
+    # Pink triangle nose.
+    nx, ny = NOSE
+    d.polygon([(nx - 22, ny - 15), (nx + 22, ny - 15), (nx, ny + 18)],
+              fill=(230, 120, 140, 255))
+    _mouth(d)
+    # Whiskers.
     for y in (370, 390, 410):
-        d.line((100, y, 210, y - 10), fill=(30, 30, 30, 180), width=3)
-        d.line((302, y - 10, 412, y), fill=(30, 30, 30, 180), width=3)
+        d.line((95, y, 215, y - 10), fill=(30, 30, 30, 180), width=3)
+        d.line((297, y - 10, 417, y), fill=(30, 30, 30, 180), width=3)
     return img
+
+
+def _feather(img: Image.Image, radius: int = FEATHER_RADIUS) -> Image.Image:
+    """Blur the alpha channel at the mask perimeter so edges dissolve into the frame.
+
+    Without this, the warped mask leaves a hard cartoon-on-photo seam — the exact
+    'glued-on smiley' look we're trying to avoid.
+    """
+    r, g, b, a = img.split()
+    a = a.filter(ImageFilter.GaussianBlur(radius=radius))
+    return Image.merge("RGBA", (r, g, b, a))
 
 
 def main() -> None:
@@ -143,7 +191,7 @@ def main() -> None:
     }
     for name, img in animals.items():
         p = OUT / name
-        img.save(p, "PNG")
+        _feather(img).save(p, "PNG")
         print(f"wrote {p}")
 
 
